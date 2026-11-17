@@ -41,7 +41,8 @@ tr.on td{background:var(--gold-soft)}
 .who{color:var(--muted);font-size:12.5px}
 .ops{white-space:nowrap;text-align:right}
 .mini{font-size:12.5px;padding:3px 9px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--text)}
-.mini.danger{color:var(--bad)}
+button.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+.mini.danger{color:var(--bad);background:var(--card);border-color:var(--line)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:12px 0}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px 16px}
 label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
@@ -138,7 +139,7 @@ function stats(emp,y,depth){ depth=depth||0; var ent=(emp.ent||{})[y], has=ent!=
     if(e.type==='vac'){ if(isPlan(e)) o.plan+=d; else o.taken+=d; } else if(e.type==='sick') o.sick+=d; else if(e.type==='credit') o.credit+=d; else o.other+=d; });
   var co=(emp.co||{})[y];
   if(co!==undefined&&co!==null&&co!==''){ o.carry=+co; o.auto=false; }
-  else if(depth<6&&(emp.ent||{})[y-1]!==undefined&&(emp.ent||{})[y-1]!==null&&(emp.ent||{})[y-1]!==''){ var p=stats(emp,y-1,depth+1); o.carry=Math.max(0,p.left); }
+  else if(depth<6&&(emp.ent||{})[y-1]!==undefined&&(emp.ent||{})[y-1]!==null&&(emp.ent||{})[y-1]!==''){ var p=stats(emp,y-1,depth+1); o.carry=p.after; }
   o.left=o.ent+o.carry+o.credit-o.taken; o.after=o.left-o.plan; return o; }
 function isPlan(e){ return e.type==='vac'&&e.st==='plan'&&(e.to||e.from)>=iso(new Date()); }
 function overdue(){ var t=iso(new Date()); return entList().filter(function(e){ return e.type==='vac'&&e.st==='plan'&&(e.to||e.from)<t; }).sort(function(a,b){ return a.from<b.from?-1:1; }); }
@@ -201,6 +202,7 @@ function viewEmp(){ var y=S.year, list=empList(), ed=S.emps[S.empEdit]; if(ed) e
   else h+=emptyStart();
   h+=empForm(ed||null);
   h+='<h2>数据备份 <small>导出全部员工和休假记录，存到钉钉云盘</small></h2><div class="act"><button type="button" class="ghost" data-act="backup">导出备份文件</button></div>';
+  h+='<h2>用数据文件重新导入 <small>会删除平台里现有的全部员工和休假记录，换成文件里的内容。用之前请先导出备份</small></h2>'+(S.reinit?'<div class="card"><p>文件里有 '+S.reinit.emps.length+' 名员工、'+(S.reinit.entries||[]).length+' 条记录。平台里现有的 '+empList().length+' 名员工、'+entList().length+' 条记录会被全部删除并替换。</p><div class="act"><button type="button" class="danger" data-act="reinit-go">确认覆盖</button><button type="button" class="ghost" data-act="reinit-no">取消</button></div></div>':'<form onsubmit="return false" class="bar"><label>选择数据文件 <input type="file" id="reinit-file" accept=".json,application/json"></label></form>');
   return h; }
 function emptyStart(){ return '<div class="card"><h3>还没有数据</h3><p>可以在“员工”里逐个添加，也可以一次导入准备好的初始数据文件。</p><form onsubmit="return false" class="bar"><label>导入初始数据文件 <input type="file" id="init-file" accept=".json,application/json"></label></form></div>'; }
 function gate(){ return '<div class="gate"><div class="box"><b class="k">AIDITE EUROPE</b><h1>员工休假平台</h1>'+(S.gateErr?'<p class="err" role="alert">'+esc(S.gateErr)+'</p>':'')+'<form data-form="gate"><label>团队口令（与发票台账系统相同）<input type="password" name="pass" autocomplete="off" required></label><button type="submit"'+(S.busy?' disabled':'')+'>'+(S.busy?'验证中…':'进入')+'</button></form><p class="hint">口令只在本机换算成数据位置，不会上传。这台设备验证通过后会记住。</p></div></div>'; }
@@ -225,12 +227,12 @@ function saveEmp(v){ if(!v.name) return; var id=v.id&&S.emps[v.id]?v.id:rid(), o
   if(v.co===''||v.co==null) delete co[y]; else co[y]=parseFloat(String(v.co).replace(',','.'))||0;
   var o={name:v.name.slice(0,60),kind:KIND[v.kind]?v.kind:'emp',start:pd(v.start)?v.start:'',left:pd(v.left)?v.left:'',ent:ent,co:co,note:(v.note||'').slice(0,200),no:old.no||empList().length+1};
   S.empEdit=''; R('emps/'+id).set(o).then(function(){ toast('已保存'); },fail); }
-function initImport(obj){ if(!obj||obj.aic!=='leave-init'||!Array.isArray(obj.emps)){ toast('这不是休假平台的初始数据文件'); return; } if(empList().length){ toast('平台里已经有员工，不能重复导入初始数据'); return; }
+function initImport(obj,force){ if(!obj||obj.aic!=='leave-init'||!Array.isArray(obj.emps)){ toast('这不是休假平台的初始数据文件'); return; } if(empList().length&&!force){ toast('平台里已经有员工，不能重复导入初始数据'); return; }
   var up={emps:{},entries:{},meta:{team:(obj.team||[]).slice(0,10).map(function(n){return String(n).slice(0,20);}),initAt:new Date().toISOString(),by:S.me}}, ids={}, n=0;
   obj.emps.slice(0,200).forEach(function(e,i){ if(!e||!e.name) return; var id='e'+(i+1); ids[e.key||e.name]=id; var ent={}, co={}; Object.keys(e.ent||{}).forEach(function(y){ if(/^\d{4}$/.test(y)&&e.ent[y]!==null&&e.ent[y]!=='') ent[y]=+e.ent[y]||0; }); Object.keys(e.co||{}).forEach(function(y){ if(/^\d{4}$/.test(y)) co[y]=+e.co[y]||0; });
     up.emps[id]={name:String(e.name).slice(0,60),kind:KIND[e.kind]?e.kind:'emp',start:pd(e.start)?e.start:'',left:pd(e.left)?e.left:'',ent:ent,co:co,note:String(e.note||'').slice(0,200),no:i+1}; });
   (obj.entries||[]).slice(0,5000).forEach(function(e,i){ var emp=ids[e.emp]; if(!emp||!pd(e.from)||!TYPES[e.type]) return; n++; up.entries['i'+(i+1)]={emp:emp,type:e.type,from:e.from,to:pd(e.to)?e.to:e.from,days:+e.days||0,st:e.type==='vac'&&e.st==='plan'?'plan':'done',note:String(e.note||'').slice(0,200),by:'初始导入',t:Date.now()}; });
-  R('').update(up).then(function(){ toast('已导入 '+Object.keys(up.emps).length+' 名员工、'+n+' 条记录'); },fail); }
+  (force?R('').set(up):R('').update(up)).then(function(){ toast('已导入 '+Object.keys(up.emps).length+' 名员工、'+n+' 条记录'); },fail); }
 function download(name,text,type){ var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:type})); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },4000); }
 function exportXlsx(){ var y=S.year, rows=[['员工','类型','入职','离职',y+'年应休','上年结转','补休额度','已休','剩余','已计划','计划后剩余','病假天数','其他假天数','备注']];
   empList().filter(function(e){ return activeIn(e,y); }).forEach(function(e){ var s=stats(e,y); rows.push([e.name,KIND[e.kind]||'',fd(e.start),fd(e.left),s.has?s.ent:'',s.carry,s.credit,s.taken,s.left,s.plan,s.after,s.sick,s.other,e.note||'']); });
@@ -258,11 +260,14 @@ document.addEventListener('click',function(ev){ var b=ev.target.closest&&ev.targ
   if(a==='setme'){ S.me=id; try{ localStorage.setItem(ME_KEY,S.me); }catch(e){} return render(); }
   if(a==='lock'){ S.gateErr=''; setSpace(null); return render(); }
   if(a==='export') return exportXlsx();
+  if(a==='reinit-no'){ S.reinit=null; return render(); }
+  if(a==='reinit-go'){ var ro=S.reinit; S.reinit=null; S.sel=''; S.edit=''; if(ro) initImport(ro,true); return render(); }
   if(a==='backup'){ download('Aidite_休假平台备份_'+iso(new Date())+'.json',JSON.stringify({aic:'leave-backup',at:new Date().toISOString(),emps:S.emps,entries:S.ents,meta:S.meta}),'application/json'); return; } });
 document.addEventListener('change',function(ev){ var t=ev.target;
   if(t.id==='year'){ S.year=+t.value; S.edit=''; return render(); }
   if(t.id==='month'){ if(/^\d{4}-\d\d$/.test(t.value)){ S.month=t.value; render(); } return; }
   if(t.id==='f-from'||t.id==='f-to'){ var a=$('f-from').value, b=$('f-to'); if(t.id==='f-from'&&(!b.value||b.value<a)) b.value=a; if(pd(a)&&pd(b.value)&&b.value>=a) $('f-days').value=workdays(a,b.value); return; }
+  if(t.id==='reinit-file'){ var f2=t.files&&t.files[0]; if(!f2) return; if(f2.size>3e6){ toast('文件太大'); return; } var rd2=new FileReader(); rd2.onload=function(){ var o=null; try{ o=JSON.parse(rd2.result); }catch(e){} if(!o||o.aic!=='leave-init'||!Array.isArray(o.emps)){ toast('这不是休假平台的数据文件'); return; } S.reinit=o; render(); }; rd2.readAsText(f2); return; }
   if(t.id==='init-file'){ var f=t.files&&t.files[0]; if(!f) return; if(f.size>3e6){ toast('文件太大'); return; } var rd=new FileReader(); rd.onload=function(){ var o=null; try{ o=JSON.parse(rd.result); }catch(e){} initImport(o); }; rd.readAsText(f); } });
 window.__leave={stats:stats,workdays:workdays,S:S,derive:derive};
 if(S.space&&rtdb) listen();
