@@ -124,15 +124,7 @@ tr:nth-child(even) td{background:rgba(10,14,23,.18)}tr:hover td{background:rgba(
 // ══════════════════════════════════════════════════════════
 //  🔥 FIREBASE CONFIG — 替换为你的 Firebase 配置
 // ══════════════════════════════════════════════════════════
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyAcFsNIY9gtNYAMG2hb4PL8qgmiVm1vY3Y",
-  authDomain: "aidite-ledger-91708.firebaseapp.com",
-  databaseURL: "https://aidite-ledger-91708-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "aidite-ledger-91708",
-  storageBucket: "aidite-ledger-91708.firebasestorage.app",
-  messagingSenderId: "757486861213",
-  appId: "1:757486861213:web:845346d6b1db174b4d0d74"
-};
+const FIREBASE_CONFIG={databaseURL:"https://aidite-ledger-91708-default-rtdb.europe-west1.firebasedatabase.app",projectId:"aidite-ledger-91708"};
 // ══════════════════════════════════════════════════════════
 const USE_CLOUD = FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY';
 let rtdb = null;
