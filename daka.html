@@ -263,7 +263,7 @@ function exportXlsx(){ if(!window.XLSX) return toast('导出组件没有加载�
 function gateView(){ var adm=S.gate==='admin';
   return '<div class="gate"><div class="box"><b class="k">AIDITE EUROPE</b><h1>'+(adm?'工时打卡 · 管理':T('title'))+'</h1>'+(S.err?'<p class="err" role="alert">'+esc(S.err)+'</p>':'')+
    (adm?'<form data-form="agate"><label>台账口令（和发票台账系统相同）<input name="pass" type="password" autocomplete="off" required></label><button type="submit"'+(S.busy?' disabled':'')+'>'+(S.busy?'正在连接…':'进入管理')+'</button></form><p class="who" style="margin-top:14px"><button type="button" class="lnk" data-act="gate-emp">返回员工入口</button></p>'
-       :'<form data-form="gate"><label>'+T('code')+'<input name="code" autocomplete="off" required placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" style="text-transform:uppercase"></label><button type="submit"'+(S.busy?' disabled':'')+'>'+T('enter')+'</button></form><p class="who" style="margin-top:14px">'+T('codeHint')+'</p><p class="who"><button type="button" class="lnk" data-act="lang">'+T('other')+'</button> · <button type="button" class="lnk" data-act="gate-admin">'+T('admin')+'</button></p>')+'</div></div>'; }
+       :'<form data-form="gate"><label>'+T('code')+'<input name="code" autocomplete="off" required placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" style="text-transform:uppercase"></label><button type="submit"'+(S.busy?' disabled':'')+'>'+T('enter')+'</button></form><p class="who" style="margin-top:14px">'+T('codeHint')+'</p><p class="who"><button type="button" class="lnk" data-act="lang">'+T('other')+'</button></p>')+'</div></div>'; }
 function render(){ var app=$('app'), act=document.activeElement, keep=act&&act.name&&act.form&&act.form.getAttribute('data-form')?[act.form.getAttribute('data-form'),act.name,act.value]:null;
   if(!rtdb){ app.innerHTML='<div class="gate"><div class="box"><p class="err">Die Seite konnte nicht vollständig geladen werden. Bitte neu laden. / 页面没有加载完整，请刷新。</p></div></div>'; return; }
   if(S.form&&keep&&(keep[0]==='ent'||keep[0]==='del')&&!S.err) return;
@@ -288,7 +288,7 @@ document.addEventListener('click',function(ev){ var b=ev.target.closest&&ev.targ
   if(a==='logout'){ empLeave(); S.err=''; return render(); }
   if(a==='gate-admin'){ S.gate='admin'; S.err=''; S.lang='zh'; var sp=''; try{ sp=localStorage.getItem(SPACE_KEY)||''; }catch(e){} if(/^[0-9a-f]{48}$/.test(sp)){ S.space=sp; return adminOpen(sp); } return render(); }
   if(a==='gate-emp'){ S.gate=''; S.err=''; return render(); }
-  if(a==='alogout'){ location.hash=''; location.reload(); return; }
+  if(a==='alogout'){ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){} location.reload(); return; }
   if(a==='copy-rules'||a==='copy-link'){ var tx=a==='copy-rules'?rulesText():linkOf(S.newEmp.code); try{ navigator.clipboard.writeText(tx).then(function(){ toast('已复制'); },function(){ toast('复制失败，请手动选中复制。'); }); }catch(e){ toast('复制失败，请手动选中复制。'); } return; }
   if(a==='recheck'){ S.ruleOk=null; ruleCheck(); return render(); }
   if(a==='close-new'){ S.newEmp=null; return render(); }
@@ -301,6 +301,7 @@ document.addEventListener('change',function(ev){ if(ev.target.id==='mon'&&/^\d{4
 if(rtdb){ try{ rtdb.ref('.info/serverTimeOffset').on('value',function(s){ S.offset=+s.val()||0; }); }catch(e){} }
 (function(){ var m=/[#&]k=([A-Za-z0-9-]+)/.exec(location.hash||''), stored=''; try{ stored=localStorage.getItem(SID_KEY)||''; }catch(e){}
   if(m&&window.crypto&&crypto.subtle){ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){} render(); sidOf(m[1]).then(empOpen); }
+  else if(/^#admin$/i.test(location.hash||'')){ S.gate='admin'; S.lang='zh'; var sp=''; try{ sp=localStorage.getItem(SPACE_KEY)||''; }catch(e){} if(/^[0-9a-f]{48}$/.test(sp)){ S.space=sp; adminOpen(sp); } else render(); }
   else if(/^[0-9a-f]{48}$/.test(stored)){ render(); empOpen(stored); }
   else render(); })();
 window.__clock={sidOf:sidOf,derive:deriveSpace};
