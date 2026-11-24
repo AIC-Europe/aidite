@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Perk 发票拆分工具</title>
+<style>
+/* layout: one working column — import card, invoice check, summary by person x service, detail table with three groupings, export bar */
+:root{--bg:#f5f3ee;--card:#fff;--ink:#16302b;--on-ink:#f5f3ee;--text:#22302c;--muted:#68726d;--line:#dcd8cc;--gold:#b9a57c;--gold-ink:#74603a;--gold-soft:#f4efe1;--ok:#1f6b4a;--ok-soft:#e6f2ea;--bad:#a8321f;--bad-soft:#fbeeea;--warn-soft:#fff6cf;--head-bg:#16302b;--head-fg:#eef3ee;--head-gold:#cdb98a;
+  --font:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121816;--card:#1a2320;--ink:#e6efe9;--on-ink:#121816;--text:#dfe7e2;--muted:#9aa6a0;--line:#2d3a35;--gold:#cdb98a;--gold-ink:#e2d2a8;--gold-soft:#332d1c;--ok:#7ed0a4;--ok-soft:#173024;--bad:#f0907c;--bad-soft:#3a1f1a;--warn-soft:#3a3413;--head-bg:#0c1412;--head-fg:#eef3ee;--head-gold:#cdb98a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121816;--card:#1a2320;--ink:#e6efe9;--on-ink:#121816;--text:#dfe7e2;--muted:#9aa6a0;--line:#2d3a35;--gold:#cdb98a;--gold-ink:#e2d2a8;--gold-soft:#332d1c;--ok:#7ed0a4;--ok-soft:#173024;--bad:#f0907c;--bad-soft:#3a1f1a;--warn-soft:#3a3413;--head-bg:#0c1412;--head-fg:#eef3ee;--head-gold:#cdb98a;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 var(--font)}
+.top{background:var(--head-bg);color:var(--head-fg)}
+.top>div{max-width:1320px;margin:0 auto;padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+.top b{letter-spacing:.32em;font-size:13px;color:var(--head-gold)}.top span{font-size:17px}
+main{max-width:1320px;margin:0 auto;padding-block:8px 50px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h2{font-size:17px;margin:26px 0 10px;padding-left:10px;border-left:3px solid var(--gold);color:var(--ink);text-wrap:balance}
+h2 small{font-weight:400;font-size:13px;color:var(--muted);margin-left:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:12px 0}
+.bar{display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center}
+.bar+.bar{margin-top:12px}
+label{font-size:13px;color:var(--muted);display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
+input,button,select{font:inherit}
+input[type=file]{max-width:100%}
+input[type=month],input[type=text],input[type=number],select{padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--text);min-width:0}
+button{cursor:pointer;padding:8px 18px;border-radius:8px;border:1px solid var(--ink);background:var(--ink);color:var(--on-ink)}
+button:disabled{opacity:.45;cursor:default}
+button.sec,button.mv{background:var(--card);color:var(--text);border-color:var(--line)}
+button.mv{padding:3px 9px;font-size:12.5px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:var(--card);color:var(--text);padding:6px 16px;font-size:13.5px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--on-ink)}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+thead th{font-size:12.5px;color:var(--gold-ink);background:var(--gold-soft);white-space:nowrap}
+.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td input[type=text]{width:100%;min-width:190px}#t-det td{white-space:nowrap}#t-det td.tip{white-space:normal}td input.d{min-width:158px;font-variant-numeric:tabular-nums}td input.p{min-width:170px}
+tr.flag td{background:var(--warn-soft)}tr.sum td{font-weight:600}tr.grp td{background:var(--gold-soft);color:var(--gold-ink);font-weight:600;font-size:12.5px}
+tr.demo td{color:var(--muted)}
+.chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;background:var(--gold-soft);color:var(--gold-ink);white-space:nowrap}
+.chip.bad{background:var(--bad-soft);color:var(--bad)}.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.msg{margin:10px 0;padding:9px 12px;border-radius:8px;font-size:14px;display:none}
+.msg.info{display:block;background:var(--gold-soft);color:var(--gold-ink)}.msg.bad{display:block;background:var(--bad-soft);color:var(--bad)}.msg.ok{display:block;background:var(--ok-soft);color:var(--ok)}
+ul{margin:10px 0 0 18px;padding:0;color:var(--muted);font-size:13.5px;max-width:92ch}
+.who{color:var(--muted);font-size:12.5px}
+.tip{font-size:12.5px;color:var(--gold-ink);min-width:150px}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+</style>
+</head>
+<body>
+
+
+<div class="top"><div><b>AIDITE EUROPE</b><span>Perk 发票拆分工具</span></div></div>
+<main>
+  <div class="card">
+    <div class="bar">
+      <label>请款月份 <input type="month" id="mon"></label>
+      <label>Perk 发票（INV 和 CR 的 PDF 一起选，也可以选压缩包）<input type="file" id="f-pdf" accept=".pdf,.zip,application/pdf,application/zip" multiple></label>
+      <label>酒店标准（欧元／人／晚）<input type="number" id="limit" value="150" min="1" step="1" style="width:90px"></label>
+    </div>
+    <div class="bar"><span class="who" id="files-sub">还没有选择文件。</span><button type="button" class="sec" id="clear" disabled>清空重选</button></div>
+    <div class="msg" id="msg" role="status"></div>
+    <ul>
+      <li>文件只在这台电脑的浏览器里读取，不会上传到任何地方。</li>
+      <li>一个月的发票（INV-01、INV-02、INV-03 和红字发票 CR）请一起选，这样服务费才能归到对应的酒店、机票、火车或租车上。文件可以分几次选，后选的会加到已选的里面。</li>
+      <li>金额为 0 的明细（比如免费选座）不进表。多人同行的明细按人数平分。</li>
+      <li>酒店超标 = 房费 ÷ 晚数 ÷ 人数，超过上面填的标准就标“是”；房费不含 Perk 服务费。已被红字发票全额退掉的酒店写“已全额退款”。</li>
+      <li>标黄的行是工具没把握的地方（日期读不到、类别不确定、多人分摊），请直接在表里改好再导出。姓名、出差时间、出差目的、费用都可以改。</li>
+    </ul>
+  </div>
+
+  <h2>发票核对 <small id="inv-sub">每张发票的明细加总要和 PDF 上的合计一致</small></h2>
+  <div class="tw"><table id="t-inv"><thead><tr><th>发票号</th><th>开票日期</th><th>文件</th><th class="n">明细笔数</th><th class="n">明细加总</th><th class="n">PDF 合计</th><th>核对</th></tr></thead><tbody></tbody></table></div>
+
+  <h2>按员工和服务项汇总 <small id="sum-sub"></small></h2>
+  <div class="tw"><table id="t-sum"><thead></thead><tbody></tbody></table></div>
+
+  <h2>明细 <small id="det-sub"></small></h2>
+  <div class="bar" style="margin-bottom:10px">
+    <div class="seg" role="group" aria-label="明细排列方式">
+      <button type="button" id="v-person" data-v="person" aria-pressed="true">按员工</button><button type="button" id="v-time" data-v="time" aria-pressed="false">按时间</button><button type="button" id="v-cat" data-v="cat" aria-pressed="false">按服务项</button>
+    </div>
+    <span class="who">三种排列都会写进 Excel，各占一个工作表。</span>
+  </div>
+  <div class="tw"><table id="t-det"><thead><tr><th>姓名</th><th>出差ID</th><th>出差时间</th><th>出差目的</th><th class="n">金额</th><th>对应发票号</th><th>费用</th><th class="n">酒店住宿天数</th><th>是否酒店超标</th><th>提示</th></tr></thead><tbody></tbody></table></div>
+
+  <div class="card"><div class="bar"><button type="button" id="go" disabled>生成 Excel 拆分表</button><button type="button" class="sec" id="pack" disabled>下载请款压缩包（Excel＋全部发票）</button><span class="who" id="go-sub">读取发票后可以生成。</span></div></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+(function(){
+"use strict";
+var $=function(id){ return document.getElementById(id); };
+var INV=[], ROWS=[], VIEW='person', ZERO=0, OKEY='aidite_perk_order', TKEY='aidite_perk_trips', DEMO=true;
+var CATS=['机票费','火车票','租车费','酒店住宿费','退款','月租'];
+var MAIN={HOTEL:'酒店住宿费',CAR:'租车费',TRAIN:'火车票',FLIGHT:'机票费'};
+var MON={Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+var FEE='PREMIUM monthly fee';
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function eur(n){ return (n==null||isNaN(n))?'':Number(n).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function r2(n){ return Math.round(n*100)/100; }
+function num(s){ return parseFloat(String(s).replace(/,/g,'')); }
+function p2(n){ return (n<10?'0':'')+n; }
+function msg(cls,t){ var m=$('msg'); m.className='msg '+cls; m.textContent=t; }
+function lsGet(k,d){ try{ var v=JSON.parse(localStorage.getItem(k)); return v==null?d:v; }catch(e){ return d; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc=window.__PDF_WORKER||'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+/* ----- read a PDF into rows of text (top to bottom, left to right) ----- */
+function rowsOf(buf){ return pdfjsLib.getDocument({data:buf}).promise.then(function(doc){ var ps=[]; for(var i=1;i<=doc.numPages;i++) ps.push(i);
+  return ps.reduce(function(acc,i){ return acc.then(function(all){ return doc.getPage(i).then(function(pg){ return pg.getTextContent(); }).then(function(tc){ var rows=[];
+    tc.items.forEach(function(it){ var s=(it.str||'').trim(); if(!s) return; var x=it.transform[4], k=-it.transform[5], r=null; for(var q=0;q<rows.length;q++){ if(Math.abs(rows[q].k-k)<2.6){ r=rows[q]; break; } } if(!r){ r={k:k,items:[]}; rows.push(r); } r.items.push({s:s,x:x}); });
+    rows.sort(function(a,b){ return a.k-b.k; }); rows.forEach(function(r){ r.items.sort(function(a,b){ return a.x-b.x; }); r.text=r.items.map(function(q){return q.s;}).join(' ').replace(/\s+/g,' ').trim(); });
+    return all.concat(rows.map(function(r){ return r.text; })); }); }); },Promise.resolve([])); }); }
+
+/* ----- one Perk invoice or credit note ----- */
+var AMT=/(?:^|\s)1\s+(-?[\d,]*\d\.\d\d)\s.*?(-?[\d,]*\d\.\d\d)\s*$/;
+function parseInvoice(lines,fname){ var inv=null, date=null, total=null, items=[], cur=null;
+  lines.forEach(function(t){ var m;
+    if(!inv&&(m=/\b((?:INV|CR)-\d{2}-\d+)\s+(\d{4})-(\d{2})-(\d{2})\b/.exec(t))){ inv=m[1]; date=m[2]+m[3]+m[4]; }
+    if((m=/Total \(EUR\)\s+(-?[\d,]*\d\.\d\d)/.exec(t))) total=num(m[1]);
+    if(/Company Registration No/.test(t)) return;
+    m=/^(.+?) for Trip ID (\d+)/.exec(t)||/^(Refund) for Trip (\d+)/.exec(t);
+    if(m||/^PREMIUM monthly fee/.test(t)){ cur={type:m?m[1]:'MONTHLY',trip:m?m[2]:'',lines:[],amt:null}; items.push(cur); return; }
+    if(!cur) return;
+    if(/Taxable base|Total \(EUR\)|^Totals\b/.test(t)){ cur=null; return; }
+    if(cur.amt==null){ var a=AMT.exec(t); if(a){ cur.amt=num(a[2]); t=t.slice(0,a.index); } }
+    if(t) cur.lines.push(t); });
+  if(!inv) return null;
+  var yy=+date.slice(0,4), mm=+date.slice(4,6), dd=+date.slice(6,8), base=new Date(yy,mm-1,dd).getTime();
+  function ymd(d,mon,ref){ var best=null; [yy-1,yy,yy+1].forEach(function(y){ var t=new Date(y,MON[mon]-1,+d).getTime(), df=Math.abs(t-ref); if(!best||df<best.df) best={df:df,y:y,t:t}; }); return best; }
+  items.forEach(function(it){ var all=it.lines.join('\n'), m;
+    it.inv=inv; it.invDate=date;
+    it.names=(m=/^Travell?ers?: (.+)$/m.exec(all))?m[1].split(',').map(function(s){ return s.trim(); }).filter(Boolean):[];
+    it.purpose=(m=/^Purpose: (.+)$/m.exec(all))?m[1].split(' | ')[0].trim():'';
+    it.label=(m=/^Labels: (.+)$/m.exec(all))?m[1].trim():'';
+    m=/(\d{2}) ([A-Z][a-z]{2})\s*-\s*(\d{2})\s+([A-Z][a-z]{2})\b/.exec(it.lines.join(' '));
+    if(m&&MON[m[2]]&&MON[m[4]]){ var s=ymd(m[1],m[2],base), e=ymd(m[3],m[4],s.t), ey=s.y; if(MON[m[4]]<MON[m[2]]) ey=s.y+1;
+      it.s=s.y+p2(MON[m[2]])+m[1]; it.e=ey+p2(MON[m[4]])+m[3]; }
+    delete it.lines; });
+  var sum=r2(items.reduce(function(n,it){ return n+(it.amt||0); },0));
+  return {inv:inv,date:date,total:total,sum:sum,items:items,file:fname,missing:items.filter(function(it){ return it.amt==null; }).length}; }
+
+/* ----- category of a fee line that has no service of its own ----- */
+function byPurpose(p){ p=p||''; if(/^(Stay|Unterkunft|Hotel|Aufenthalt|S[ée]jour|Estancia|Soggiorno)/i.test(p)) return '酒店住宿费'; if(/^(Flight|Flug|Vol |Vuelo|Volo)/i.test(p)) return '机票费'; if(/^(Train|Zug|Bahn|Tren)/i.test(p)) return '火车票'; if(/^(Car|Mietwagen|Auto|Voiture|Coche)/i.test(p)) return '租车费'; return ''; }
+function nights(s,e){ if(!/^\d{8}$/.test(s||'')||!/^\d{8}$/.test(e||'')) return null; var a=Date.UTC(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6)), b=Date.UTC(+e.slice(0,4),+e.slice(4,6)-1,+e.slice(6)); return Math.round((b-a)/864e5); }
+
+function build(){ var mem=lsGet(TKEY,{}), trips={}, all=[]; ZERO=0;
+  INV.forEach(function(v,vi){ v.items.forEach(function(it,ii){ it.ord=vi*10000+ii; all.push(it); if(it.trip){ var t=trips[it.trip]||(trips[it.trip]={mains:[],refunds:[],all:[]}); t.all.push(it); if(MAIN[it.type]) t.mains.push(it); if(it.type==='Refund') t.refunds.push(it); } }); });
+  var catsOf=function(list){ var cs=[]; list.forEach(function(x){ var c=MAIN[x.type]; if(cs.indexOf(c)<0) cs.push(c); }); return cs; };
+  ROWS=[];
+  all.forEach(function(it){ if(it.amt==null) return; if(Math.abs(it.amt)<0.005){ ZERO++; return; }
+    var flags=[], cat='', s=it.s, e=it.e, t=it.trip?trips[it.trip]:null, m=it.trip?mem[it.trip]:null, main=!!MAIN[it.type];
+    if(main) cat=MAIN[it.type]; else if(it.type==='Refund') cat='退款'; else if(it.type==='MONTHLY') cat='月租';
+    else { var cs=catsOf(t.mains), near=catsOf(t.mains.filter(function(x){ return x.invDate===it.invDate; })), air=/PRIORITY|FLEXITRAVEL|Seat booking/i.test(it.type);
+      var hint=byPurpose(it.purpose); if(!hint) t.all.some(function(x){ hint=byPurpose(x.purpose); return !!hint; });
+      if(cs.length===1) cat=cs[0];
+      else if(near.length===1) cat=near[0];
+      else if(air&&(!cs.length||cs.indexOf('机票费')>=0)) cat='机票费';
+      else if(cs.length>1){ cat=cs.indexOf(hint)>=0?hint:(near[0]||cs[0]); flags.push('同一行程有'+(near.length>1?near:cs).join('、')+'，请确认这笔归哪一类'); }
+      else { cat=hint||(m&&m.c)||''; if(!cat) flags.push('读不出这笔属于哪类服务，请选择费用类别'); } }
+    if(!s&&it.type!=='MONTHLY'){ var dated=t?t.mains.filter(function(x){ return x.s; }):[], pick=dated.filter(function(x){ return MAIN[x.type]===cat&&x.invDate===it.invDate; });
+      if(!pick.length) pick=dated.filter(function(x){ return MAIN[x.type]===cat; }); if(!pick.length) pick=dated;
+      if(!pick.length&&!(m&&m.s)&&t) pick=t.all.filter(function(x){ return x.s; });
+      if(pick.length){ s=pick.map(function(x){ return x.s; }).sort()[0]; e=pick.map(function(x){ return x.e; }).sort().pop(); }
+      else if(m&&m.s){ s=m.s; e=m.e; }
+      else flags.push('发票上没有这笔的出差日期，请补填'); }
+    var names=it.names.length?it.names:[it.type==='MONTHLY'?FEE:''], k=names.length, per=Math.floor(Math.round(Math.abs(it.amt)*100)/k), rest=Math.round(Math.abs(it.amt)*100)-per*k, sg=it.amt<0?-1:1;
+    if(!names[0]) flags.push('发票上没有出差人，请补填姓名');
+    if(k>1) flags.push(k+'人同行，金额已平分（原金额 '+eur(it.amt)+'）');
+    var refunded=it.type==='HOTEL'&&t.refunds.some(function(x){ return Math.abs(x.amt+it.amt)<0.005; });
+    names.forEach(function(nm,i){ ROWS.push({name:nm,trip:it.trip,dates:s?s+'-'+e:'',purpose:it.label,amt:sg*(per+(i<rest?1:0))/100,inv:it.inv,cat:cat,type:it.type,hotel:it.type==='HOTEL',refunded:refunded,flags:flags.slice(),ord:it.ord,main:main,invDate:it.invDate}); }); });
+  DEMO=false; }
+
+function rowNights(r){ if(!r.hotel) return null; var p=(r.dates||'').split('-'); var n=nights(p[0],p[1]); return n&&n>0?n:null; }
+function rowOver(r){ if(!r.hotel) return ''; if(r.refunded) return '已全额退款'; var n=rowNights(r); if(!n) return ''; return r.amt/n>limit()?'是':'否'; }
+function limit(){ var v=parseFloat($('limit').value); return v>0?v:150; }
+function rowFlags(r){ var f=r.flags.slice(); if(r.type!=='MONTHLY'&&r.dates&&!/^\d{8}-\d{8}$/.test(r.dates)) f.push('出差时间的写法应为 20261014-20261015'); if(r.hotel&&!r.refunded&&!rowNights(r)) f.push('算不出住宿晚数，请检查出差时间'); if(!r.cat&&f.join('').indexOf('费用类别')<0) f.push('请选择费用类别'); if(!r.name&&f.join('').indexOf('姓名')<0) f.push('请补填姓名'); return f; }
+
+/* ----- order ----- */
+function people(){ var saved=lsGet(OKEY,[]), ns=[]; ROWS.forEach(function(r){ if(ns.indexOf(r.name)<0) ns.push(r.name); });
+  ns.sort(function(a,b){ if(a===FEE||b===FEE) return a===FEE?(b===FEE?0:1):-1; var x=saved.indexOf(a), y=saved.indexOf(b); if(x<0&&y<0) return a.localeCompare(b); if(x<0) return 1; if(y<0) return -1; return x-y; }); return ns; }
+function sorted(view){ var ps=people(), tk={}; ROWS.forEach(function(r){ var k=r.name+'|'+r.trip, d=r.dates||'99999999'; if(!tk[k]||(r.main&&d<tk[k])) tk[k]=(r.main||!tk[k])?d:tk[k]; });
+  var rank=function(r){ return r.type==='Refund'?2:(r.main?0:1); }, tripKey=function(r){ return tk[r.name+'|'+r.trip]+'|'+r.trip; };
+  var c=function(a,b){ return a<b?-1:a>b?1:0; };
+  var byP=function(a,b){ return ps.indexOf(a.name)-ps.indexOf(b.name); }, byT=function(a,b){ return c(tripKey(a),tripKey(b))||rank(a)-rank(b)||a.ord-b.ord; };
+  var out=ROWS.slice();
+  if(view==='time') out.sort(function(a,b){ return c(a.dates||'99999999',b.dates||'99999999')||byP(a,b)||byT(a,b); });
+  else if(view==='cat') out.sort(function(a,b){ var x=CATS.indexOf(a.cat), y=CATS.indexOf(b.cat); return (x<0?99:x)-(y<0?99:y)||byP(a,b)||byT(a,b); });
+  else out.sort(function(a,b){ return byP(a,b)||byT(a,b); });
+  return out; }
+
+/* ----- screen ----- */
+var SAMPLE=[['示例员工 A','40000001','20261005-20261007','客户拜访',268,'INV-03-000001','酒店住宿费',2,'否'],['示例员工 A','40000001','20261005-20261007','客户拜访',8.04,'INV-01-000001','酒店住宿费','',''],['示例员工 B','40000002','20261012-20261012','展会',93.45,'INV-01-000001','机票费','','']];
+function drawInv(){ var tb=$('t-inv').querySelector('tbody');
+  if(!INV.length){ tb.innerHTML='<tr><td colspan="7" class="who">选择发票后，这里逐张显示明细加总和 PDF 合计是否一致。</td></tr>'; return; }
+  var h='', S=0, T=0, N=0; INV.forEach(function(v){ var ok=v.total!=null&&Math.abs(v.sum-v.total)<0.005&&!v.missing; S+=v.sum; T+=v.total||0; N+=v.items.length;
+    h+='<tr'+(ok?'':' class="flag"')+'><td>'+esc(v.inv)+'</td><td>'+esc(v.date.slice(0,4)+'-'+v.date.slice(4,6)+'-'+v.date.slice(6))+'</td><td class="who">'+esc(v.file)+'</td><td class="n">'+v.items.length+'</td><td class="n">'+eur(v.sum)+'</td><td class="n">'+eur(v.total)+'</td><td>'+(ok?'<span class="chip ok">一致</span>':'<span class="chip bad">不一致，请人工核对这张发票</span>')+'</td></tr>'; });
+  h+='<tr class="sum"><td colspan="3">合计</td><td class="n">'+N+'</td><td class="n">'+eur(S)+'</td><td class="n">'+eur(T)+'</td><td></td></tr>'; tb.innerHTML=h; }
+function drawSum(){ var th=$('t-sum').querySelector('thead'), tb=$('t-sum').querySelector('tbody'), cols=CATS.slice(); if(ROWS.some(function(r){ return !r.cat; })) cols.push('');
+  th.innerHTML='<tr><th>员工</th>'+cols.map(function(c){ return '<th class="n">'+esc(c||'未分类')+'</th>'; }).join('')+'<th class="n">合计</th><th>顺序</th></tr>';
+  if(!ROWS.length){ tb.innerHTML='<tr><td colspan="'+(cols.length+3)+'" class="who">读取发票后，这里显示每个人在机票、火车、租车、酒店上各花了多少。</td></tr>'; $('sum-sub').textContent=''; return; }
+  var ps=people(), h='', tot=cols.map(function(){ return 0; }), G=0;
+  ps.forEach(function(p,i){ var line=cols.map(function(c,ci){ var v=r2(ROWS.reduce(function(n,r){ return n+(r.name===p&&r.cat===c?r.amt:0); },0)); tot[ci]+=v; return v; }), s=r2(line.reduce(function(a,b){ return a+b; },0)); G+=s;
+    h+='<tr><td>'+esc(p||'（未填姓名）')+'</td>'+line.map(function(v){ return '<td class="n">'+(Math.abs(v)<0.005?'':eur(v))+'</td>'; }).join('')+'<td class="n"><b>'+eur(s)+'</b></td><td>'+(p===FEE?'':'<button type="button" class="mv" data-mv="-1" data-i="'+i+'"'+(i===0?' disabled':'')+'>上移</button> <button type="button" class="mv" data-mv="1" data-i="'+i+'"'+(i>=ps.length-1||ps[i+1]===FEE?' disabled':'')+'>下移</button>')+'</td></tr>'; });
+  h+='<tr class="sum"><td>合计</td>'+tot.map(function(v){ return '<td class="n">'+eur(v)+'</td>'; }).join('')+'<td class="n">'+eur(G)+'</td><td></td></tr>'; tb.innerHTML=h;
+  $('sum-sub').textContent='员工顺序可以用“上移”“下移”调整，工具会记住'; }
+function drawDet(){ var tb=$('t-det').querySelector('tbody');
+  if(DEMO){ tb.innerHTML=SAMPLE.map(function(s){ return '<tr class="demo"><td>'+esc(s[0])+' <span class="chip">示例</span></td><td>'+s[1]+'</td><td>'+s[2]+'</td><td>'+esc(s[3])+'</td><td class="n">'+eur(s[4])+'</td><td>'+s[5]+'</td><td>'+s[6]+'</td><td class="n">'+s[7]+'</td><td>'+s[8]+'</td><td class="who">这几行只是样子，选择发票后会换成真实数据。</td></tr>'; }).join(''); $('det-sub').textContent='还没有读取发票'; return; }
+  var rows=sorted(VIEW), h='', last=null, nf=0;
+  rows.forEach(function(r){ var i=ROWS.indexOf(r), f=rowFlags(r), key=VIEW==='person'?r.name:VIEW==='cat'?r.cat:(r.dates||'').slice(0,6); if(f.length) nf++;
+    if(key!==last){ last=key; var sub=r2(rows.reduce(function(n,x){ return n+((VIEW==='person'?x.name:VIEW==='cat'?x.cat:(x.dates||'').slice(0,6))===key?x.amt:0); },0));
+      h+='<tr class="grp"><td colspan="4">'+esc(VIEW==='time'?(key?key.slice(0,4)+' 年 '+(+key.slice(4))+' 月出差':'没有日期'):(key||'未填'))+'</td><td class="n">'+eur(sub)+'</td><td colspan="5"></td></tr>'; }
+    var n=rowNights(r), ov=rowOver(r);
+    h+='<tr'+(f.length?' class="flag"':'')+'><td><input type="text" id="nm'+i+'" data-i="'+i+'" data-k="name" value="'+esc(r.name)+'"'+(r.type==='MONTHLY'?' disabled':'')+' aria-label="姓名"></td><td>'+esc(r.trip)+'</td><td><input type="text" class="d" id="dt'+i+'" data-i="'+i+'" data-k="dates" value="'+esc(r.dates)+'"'+(r.type==='MONTHLY'?' disabled':'')+' aria-label="出差时间"></td><td><input type="text" class="p" id="pp'+i+'" data-i="'+i+'" data-k="purpose" value="'+esc(r.purpose)+'"'+(r.type==='MONTHLY'?' disabled':'')+' aria-label="出差目的"></td><td class="n">'+eur(r.amt)+'</td><td>'+esc(r.inv)+'</td><td><select id="ct'+i+'" data-i="'+i+'" data-k="cat" aria-label="费用">'+(r.cat?'':'<option value="">请选择</option>')+CATS.map(function(c){ return '<option'+(c===r.cat?' selected':'')+'>'+c+'</option>'; }).join('')+'</select></td><td class="n">'+(n||'')+'</td><td>'+(ov==='是'?'<span class="chip bad">是</span>':ov==='否'?'<span class="chip ok">否</span>':ov?'<span class="chip">'+esc(ov)+'</span>':'')+'</td><td class="tip">'+esc(f.join('；'))+'</td></tr>'; });
+  h+='<tr class="sum"><td colspan="4">合计</td><td class="n">'+eur(r2(ROWS.reduce(function(n,r){ return n+r.amt; },0)))+'</td><td colspan="5"></td></tr>'; tb.innerHTML=h;
+  $('det-sub').textContent=ROWS.length+' 行'+(ZERO?'，另有 '+ZERO+' 笔金额为 0 的明细没有进表':'')+(nf?'，'+nf+' 行标黄待确认':''); }
+function draw(){ drawInv(); drawSum(); drawDet(); var ok=ROWS.length>0; $('go').disabled=!ok; $('pack').disabled=!(ok&&window.JSZip); $('clear').disabled=!INV.length;
+  $('files-sub').textContent=INV.length?'已读取 '+INV.length+' 张发票：'+INV.map(function(v){ return v.inv; }).join('、'):'还没有选择文件。';
+  $('go-sub').textContent=ok?'导出前请先看一眼上面的“发票核对”和标黄的行。':'读取发票后可以生成。'; }
+
+/* ----- files ----- */
+function readFiles(list){ var jobs=[]; Array.prototype.forEach.call(list,function(f){
+    if(/\.zip$/i.test(f.name)) jobs.push(f.arrayBuffer().then(function(b){ return JSZip.loadAsync(b); }).then(function(z){ var ps=[]; z.forEach(function(path,e){ if(!e.dir&&/\.pdf$/i.test(path)&&!/__MACOSX/.test(path)) ps.push(e.async('arraybuffer').then(function(b){ return {name:path.split('/').pop(),buf:b}; })); }); return Promise.all(ps); }));
+    else if(/\.pdf$/i.test(f.name)) jobs.push(f.arrayBuffer().then(function(b){ return [{name:f.name,buf:b}]; })); });
+  return Promise.all(jobs).then(function(a){ return [].concat.apply([],a); }); }
+function load(list){ if(!window.pdfjsLib) return msg('bad','读取 PDF 的组件没有加载成功，请检查网络后刷新页面。'); msg('info','正在读取发票…');
+  readFiles(list).then(function(fs){ var bad=[], dup=[], add=0;
+    return fs.reduce(function(acc,f){ return acc.then(function(){ return rowsOf(f.buf.slice(0)).then(function(lines){ var v=parseInvoice(lines,f.name); if(!v||!v.items.length){ bad.push(f.name); return; } if(INV.some(function(x){ return x.inv===v.inv; })){ dup.push(v.inv); return; } v.buf=f.buf; INV.push(v); add++; },function(){ bad.push(f.name); }); }); },Promise.resolve()).then(function(){
+      INV.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:a.inv<b.inv?-1:1; }); build();
+      if(INV.length&&!$('mon').value){ var d=INV[INV.length-1].date; $('mon').value=d.slice(0,4)+'-'+d.slice(4,6); }
+      draw(); var off=INV.filter(function(v){ return v.total==null||Math.abs(v.sum-v.total)>=0.005||v.missing; }).length, t=[];
+      if(add) t.push('新读取 '+add+' 张发票'); if(dup.length) t.push('已经读过、这次跳过：'+dup.join('、')); if(bad.length) t.push('不是 Perk 发票或读不出来：'+bad.join('、')); if(off) t.push(off+' 张发票的明细加总和 PDF 合计不一致');
+      msg(off||bad.length?'bad':(add?'ok':'info'),t.join('。')||'没有找到 PDF 文件。'); }); }).catch(function(e){ msg('bad','读取失败：'+(e&&e.message||e)); }); }
+$('f-pdf').addEventListener('change',function(){ if(this.files.length) load(this.files); this.value=''; });
+$('clear').addEventListener('click',function(){ INV=[]; ROWS=[]; ZERO=0; DEMO=true; draw(); msg('info','已清空，可以重新选择发票。'); });
+$('limit').addEventListener('change',function(){ if(!DEMO) drawDet(); });
+$('t-det').addEventListener('change',function(ev){ var el=ev.target, i=el.getAttribute('data-i'); if(i==null) return; var r=ROWS[+i], k=el.getAttribute('data-k'), v=el.value.trim();
+  if(k==='dates') v=v.replace(/\s/g,'').replace(/[–—~]/g,'-');
+  r[k]=v; if(k==='cat') r.flags=r.flags.filter(function(f){ return !/类别|哪一类/.test(f); }); if(k==='dates') r.flags=r.flags.filter(function(f){ return !/出差日期/.test(f); }); if(k==='name') r.flags=r.flags.filter(function(f){ return !/出差人/.test(f); });
+  drawSum(); drawDet(); var again=$(el.id); if(again&&k==='cat') again.focus(); });
+$('t-sum').addEventListener('click',function(ev){ var b=ev.target; if(!b.getAttribute||!b.getAttribute('data-mv')) return; var ps=people().filter(function(p){ return p!==FEE; }), i=+b.getAttribute('data-i'), j=i+(+b.getAttribute('data-mv')); if(j<0||j>=ps.length) return; var x=ps[i]; ps[i]=ps[j]; ps[j]=x; var old=lsGet(OKEY,[]).filter(function(p){ return ps.indexOf(p)<0; }); lsSet(OKEY,ps.concat(old)); drawSum(); drawDet(); });
+['v-person','v-time','v-cat'].forEach(function(id){ $(id).addEventListener('click',function(){ VIEW=this.getAttribute('data-v'); ['v-person','v-time','v-cat'].forEach(function(x){ $(x).setAttribute('aria-pressed',x===id?'true':'false'); }); drawDet(); }); });
+
+/* ----- Excel ----- */
+var EURF='#,##0.00" €";\\-#,##0.00" €"', THIN={style:'thin'}, BOX={top:THIN,left:THIN,bottom:THIN,right:THIN};
+function styleRow(ws,r,cols,bold){ var row=ws.getRow(r); row.height=24; for(var c=1;c<=cols;c++){ var cell=row.getCell(c); cell.border=BOX; cell.alignment={horizontal:'center',vertical:'middle'}; cell.font={name:'等线',size:11,bold:!!bold}; } }
+function sheetList(wb,name,rows,note){ var ws=wb.addWorksheet(name,{views:[{state:'frozen',ySplit:1,zoomScale:90}]}), lim=limit();
+  [28.4,15.75,22.2,32.5,12.5,18.5,15.9,14,16].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
+  ws.getRow(1).values=['姓名','出差ID','出差时间','出差目的','金额','对应发票号','费用','酒店住宿天数','是否酒店超标']; styleRow(ws,1,9,true);
+  var r=2, sum=0; rows.forEach(function(x){ var n=rowNights(x), ov=rowOver(x), row=ws.getRow(r);
+    row.values=[x.name,x.trip&&/^\d+$/.test(x.trip)?+x.trip:(x.trip||null),x.dates||null,x.purpose||null,x.amt,x.inv,x.cat||null,n||null,null];
+    if(x.hotel){ if(x.refunded||!n) row.getCell(9).value=ov||null; else row.getCell(9).value={formula:'IF(E'+r+'/H'+r+'>'+lim+',"是","否")',result:ov}; }
+    styleRow(ws,r,9,false); row.getCell(5).numFmt=EURF; if(ov==='是') row.getCell(9).font={name:'等线',size:11,bold:true,color:{argb:'FFC00000'}};
+    sum+=x.amt; r++; });
+  ws.getRow(r).values=['合计']; ws.getCell('E'+r).value={formula:'SUM(E2:E'+(r-1)+')',result:r2(sum)}; styleRow(ws,r,9,false); ws.getCell('E'+r).numFmt=EURF; ws.getCell('E'+r).font={name:'等线',size:11,bold:true};
+  if(note){ ws.getCell('A'+(r+2)).value='说明：超标判断＝酒店房费（金额列，不含Perk服务费）÷住宿晚数 > '+lim+' €/人/晚；住宿天数与超标判断只填在房费行。'; ws.getCell('A'+(r+2)).font={name:'等线',size:11}; }
+  return ws; }
+function sheetSum(wb){ var ws=wb.addWorksheet('汇总',{views:[{zoomScale:90}]}), ps=people(), cols=CATS.slice(), L=function(c){ return String.fromCharCode(64+c); }, S="'按员工'!";
+  ws.getColumn(1).width=28.4; for(var c=2;c<=cols.length+2;c++) ws.getColumn(c).width=16;
+  ws.getRow(1).values=['员工'].concat(cols).concat(['合计']); styleRow(ws,1,cols.length+2,true);
+  var r=2; ps.forEach(function(p){ var row=ws.getRow(r); row.getCell(1).value=p; var line=0;
+    cols.forEach(function(cat,ci){ var v=r2(ROWS.reduce(function(n,x){ return n+(x.name===p&&x.cat===cat?x.amt:0); },0)); line+=v; row.getCell(ci+2).value={formula:'SUMIFS('+S+'$E:$E,'+S+'$A:$A,$A'+r+','+S+'$G:$G,'+L(ci+2)+'$1)',result:v}; });
+    row.getCell(cols.length+2).value={formula:'SUM(B'+r+':'+L(cols.length+1)+r+')',result:r2(line)}; styleRow(ws,r,cols.length+2,false); for(var c=2;c<=cols.length+2;c++) row.getCell(c).numFmt=EURF; r++; });
+  var row=ws.getRow(r); row.getCell(1).value='合计'; for(var c2=2;c2<=cols.length+2;c2++){ var col=L(c2), v=0; if(c2<=cols.length+1) v=ROWS.reduce(function(n,x){ return n+(x.cat===cols[c2-2]?x.amt:0); },0); else v=ROWS.reduce(function(n,x){ return n+(cols.indexOf(x.cat)>=0?x.amt:0); },0); row.getCell(c2).value={formula:'SUM('+col+'2:'+col+(r-1)+')',result:r2(v)}; }
+  styleRow(ws,r,cols.length+2,true); for(var c3=2;c3<=cols.length+2;c3++) row.getCell(c3).numFmt=EURF;
+  r+=3; var h=r; ws.getRow(r).values=['发票号','开票日期','PDF 合计','表内合计','差异']; styleRow(ws,r,5,true); r++;
+  INV.forEach(function(v){ var row=ws.getRow(r), inTable=r2(ROWS.reduce(function(n,x){ return n+(x.inv===v.inv?x.amt:0); },0)); row.getCell(1).value=v.inv; row.getCell(2).value=v.date.slice(0,4)+'-'+v.date.slice(4,6)+'-'+v.date.slice(6); row.getCell(3).value=v.total; row.getCell(4).value={formula:'SUMIF('+S+'$F:$F,$A'+r+','+S+'$E:$E)',result:inTable}; row.getCell(5).value={formula:'D'+r+'-C'+r,result:r2(inTable-(v.total||0))}; styleRow(ws,r,5,false); [3,4,5].forEach(function(c){ row.getCell(c).numFmt=EURF; }); r++; });
+  var tr=ws.getRow(r); tr.getCell(1).value='合计'; ['C','D','E'].forEach(function(col,i){ var v=i===0?INV.reduce(function(n,x){ return n+(x.total||0); },0):i===1?ROWS.reduce(function(n,x){ return n+x.amt; },0):ROWS.reduce(function(n,x){ return n+x.amt; },0)-INV.reduce(function(n,x){ return n+(x.total||0); },0); tr.getCell(i+3).value={formula:'SUM('+col+(h+1)+':'+col+(r-1)+')',result:r2(v)}; }); styleRow(ws,r,5,true); [3,4,5].forEach(function(c){ tr.getCell(c).numFmt=EURF; }); }
+function workbook(){ var wb=new ExcelJS.Workbook(); wb.creator='Perk 发票拆分工具'; sheetList(wb,'按员工',sorted('person'),true); sheetList(wb,'按时间',sorted('time'),false); sheetList(wb,'按服务项',sorted('cat'),false); sheetSum(wb); wb.calcProperties.fullCalcOnLoad=true; return wb.xlsx.writeBuffer(); }
+function remember(){ var mem=lsGet(TKEY,{}); ROWS.forEach(function(r){ if(r.main&&r.trip&&/^\d{8}-\d{8}$/.test(r.dates)){ var p=r.dates.split('-'), m=mem[r.trip]; if(!m) mem[r.trip]={c:r.cat,s:p[0],e:p[1]}; else { if(m.c!==r.cat) m.c=''; if(p[0]<m.s) m.s=p[0]; if(p[1]>m.e) m.e=p[1]; } } });
+  var ks=Object.keys(mem); if(ks.length>600) ks.sort().slice(0,ks.length-600).forEach(function(k){ delete mem[k]; }); lsSet(TKEY,mem); lsSet(OKEY,people().filter(function(p){ return p!==FEE; }).concat(lsGet(OKEY,[]).filter(function(p){ return !ROWS.some(function(r){ return r.name===p; }); }))); }
+function tag(){ var m=$('mon').value||''; if(!m&&INV.length){ var d=INV[INV.length-1].date; m=d.slice(0,4)+'-'+d.slice(4,6); } return m; }
+function save(filename,blob){ return (window.claude&&window.claude.use?window.claude.use('downloads'):Promise.resolve(null)).then(function(dl){ if(dl) return dl.save({filename:filename,data:blob}).then(function(){ return true; });
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },5000); return true; }); }
+function fail(e){ var c=e&&e.code; msg(c==='declined'?'info':'bad',c==='declined'?'已取消保存。':c==='rate_limited'?'保存得太频繁了，请稍等几秒再点。':'没有保存成功：'+(e&&e.message||e)); }
+function pending(){ return ROWS.filter(function(r){ return rowFlags(r).some(function(f){ return !/平分/.test(f); }); }).length; }
+function doneText(what){ var n=pending(), off=INV.filter(function(v){ return v.total==null||Math.abs(v.sum-v.total)>=0.005; }).length; return what+'：'+ROWS.length+' 行，合计 '+eur(r2(ROWS.reduce(function(a,r){ return a+r.amt; },0)))+' 欧元。'+(off?'注意有 '+off+' 张发票没对上。':'每张发票都和 PDF 合计一致。')+(n?'还有 '+n+' 行标黄没有处理。':''); }
+$('go').addEventListener('click',function(){ if(!window.ExcelJS) return msg('bad','生成 Excel 的组件没有加载成功，请检查网络后刷新页面。'); var b=this, m=tag(); b.disabled=true; msg('info','正在生成 Excel…');
+  workbook().then(function(buf){ return save(m.replace('-','')+'_Travelperk拆分_按员工.xlsx',new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})); }).then(function(){ remember(); msg(pending()?'info':'ok',doneText('已生成 Excel')); },fail).then(function(){ b.disabled=false; }); });
+$('pack').addEventListener('click',function(){ if(!window.ExcelJS||!window.JSZip) return msg('bad','打包的组件没有加载成功，请检查网络后刷新页面。'); var b=this, m=tag(), folder=(m?+m.slice(5):'')+'月份'; b.disabled=true; msg('info','正在打包…');
+  workbook().then(function(buf){ var zip=new JSZip(), d=zip.folder(folder); d.file(m.replace('-','')+'_Travelperk拆分_按员工.xlsx',buf); INV.forEach(function(v){ d.file(v.date+'-'+v.inv+'-Perk.pdf',v.buf); }); return zip.generateAsync({type:'blob',compression:'DEFLATE'}); })
+  .then(function(blob){ return save(folder+'.zip',blob); }).then(function(){ remember(); msg(pending()?'info':'ok',doneText('已打包（1 个 Excel＋'+INV.length+' 张发票）')); },fail).then(function(){ b.disabled=false; }); });
+
+window.__perk={state:function(){ return {inv:INV.map(function(v){ return {inv:v.inv,date:v.date,total:v.total,sum:v.sum,n:v.items.length,missing:v.missing}; }),rows:sorted('person').map(function(r){ return {name:r.name,trip:r.trip,dates:r.dates,purpose:r.purpose,amt:r.amt,inv:r.inv,cat:r.cat,type:r.type,nights:rowNights(r),over:rowOver(r),flags:rowFlags(r)}; }),zero:ZERO}; }};
+draw();
+})();
+</script>
+</body>
+</html>
