@@ -47,7 +47,8 @@ ul{margin:6px 0 0 18px;padding:0;color:var(--muted);font-size:13.5px}
     <div class="bar">
       <label>工资月份 <input type="month" id="mon"></label>
       <label>事务所发来的文件（工资单 PDF 和“其他文件”PDF 一起选，也可以选压缩包）<input type="file" id="f-pay" accept=".pdf,.zip,application/pdf,application/zip" multiple></label>
-      <label>PDF 密码（文件加密时才需要填）<input type="password" id="pw" autocomplete="off" placeholder="事务所约定的密码"></label>
+      <label>PDF 密码（文件加密时才需要填）<input type="password" id="pw" autocomplete="off" placeholder="填好后点“确认密码”或按回车"></label>
+      <button type="button" id="pw-ok">确认密码</button>
       <label>Deel 账单（PDF）<input type="file" id="f-deel" accept=".pdf,application/pdf"></label>
     </div>
     <div class="bar"><span class="who" id="files-sub">还没有选择文件。</span><button type="button" id="clear" disabled>清空重选</button></div>
@@ -205,9 +206,9 @@ function loadAll(){ if(!RAW.length){ PAY=[]; SRC=[]; JRN=null; drawPay(); $('fil
   .then(function(r){ PAY=r.ok; SRC=r.src; JRN=r.hasJ?r.jrn:null; sortPay(); applyJournal(); drawPay();
     $('files-sub').textContent='已选 '+RAW.length+' 个文件：'+RAW.map(function(f){ return f.name; }).join('、');
     var t, cls;
-    if(r.lock.length){ cls='bad'; t=(pw?'密码不对，':'')+'有 '+r.lock.length+' 个文件加了密码（'+r.lock.join('、')+'）。请在上面“PDF 密码”里填'+(pw?'正确的':'')+'密码，填好后会自动重新读取，不用重新选文件。'; if(r.ok.length) t='已读取 '+r.ok.length+' 张工资单。'+t; }
+    if(r.lock.length){ cls='bad'; t=(pw?'密码不对，':'')+'有 '+r.lock.length+' 个文件加了密码（'+r.lock.join('、')+'）。请在上面“PDF 密码”里填'+(pw?'正确的':'')+'密码，然后点“确认密码”（或按回车），不用重新选文件。'; if(r.ok.length) t='已读取 '+r.ok.length+' 张工资单。'+t; }
     else if(!r.ok.length){ cls='bad'; t=(r.hasJ?'读到了工资日记账，但还':'')+'没有读到工资单。请把事务所发来的工资单 PDF（Salaries）也选上。'; }
-    else if(JRN){ cls='ok'; t='读取了 '+r.ok.length+' 张工资单和工资日记账。'; }
+    else if(JRN){ cls='ok'; t=(RAW.some(function(f){ return f.enc; })?'密码正确。':'')+'读取了 '+r.ok.length+' 张工资单和工资日记账。'; }
     else { cls='info'; t='读取了 '+r.ok.length+' 张工资单，但没有读到工资日记账（Lohnjournal）。'+(r.badJ?'“其他文件”里有日记账，但格式没认出来，请把这个文件发给艾玛。':'请把事务所发来的“其他文件”PDF（Other documents）也选上。')+'工资税和雇主互助保险金在此之前可以先手工填。'; }
     if(r.skip.length) t+=' 另有 '+r.skip.length+' 个文件读不了（'+r.skip.join('、')+'），可能是扫描件或图片。';
     msg(cls,t); })
@@ -215,8 +216,12 @@ function loadAll(){ if(!RAW.length){ PAY=[]; SRC=[]; JRN=null; drawPay(); $('fil
 $('f-pay').addEventListener('change',function(){ var fl=this.files, inp=this; if(!fl||!fl.length) return; if(!window.pdfjsLib){ return msg('bad','读取 PDF 的组件没有加载成功，请检查网络后刷新页面。'); } msg('info','正在读取…');
   readFiles(fl).then(function(files){ files.forEach(function(f){ var n=f.buf.byteLength, old=-1; RAW.forEach(function(x,i){ if(x.name===f.name) old=i; }); if(old>=0) RAW[old]=f; else RAW.push(f); }); try{ inp.value=''; }catch(e){} loadAll(); })
   .catch(function(e){ msg('bad','读取失败：'+(e&&e.message||e)); }); });
-$('pw').addEventListener('change',function(){ if(RAW.length) loadAll(); });
-$('clear').addEventListener('click',function(){ RAW=[]; loadAll(); msg('info','已清空，请重新选择文件。'); });
+function pwGo(){ var v=$('pw').value||''; if(!v) return msg('bad','请先在“PDF 密码”里填上密码，再点“确认密码”。'); if(!RAW.length) return msg('info','密码已记下。现在请选择事务所发来的文件，工具会用这个密码打开。'); if(v===PWDONE) return; PWDONE=v; loadAll(); }
+var PWDONE=null;
+$('pw-ok').addEventListener('click',function(){ PWDONE=null; pwGo(); });
+$('pw').addEventListener('keydown',function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); PWDONE=null; pwGo(); } });
+$('pw').addEventListener('change',function(){ if(RAW.length&&$('pw').value) pwGo(); });
+$('clear').addEventListener('click',function(){ RAW=[]; PWDONE=null; loadAll(); msg('info','已清空，请重新选择文件。'); });
 $('f-deel').addEventListener('change',function(){ var f=this.files&&this.files[0]; if(!f) return; if(!window.pdfjsLib){ return msg('bad','读取 PDF 的组件没有加载成功，请检查网络后刷新页面。'); } msg('info','正在读取 Deel 账单…');
   f.arrayBuffer().then(function(b){ return rowsOf(b,$('pw').value||''); }).then(function(rows){ var d=parseDeel(rows); if(!d||!d.blocks.length){ msg('bad','这个文件不像 Deel 的账单，没有读到发票。'); return; } DEEL=d; drawDeel(); msg('ok','读取了 Deel 账单，共 '+d.blocks.length+' 张发票。'); }).catch(function(e){ msg('bad','读取失败：'+(e&&e.message||e)); }); });
 document.addEventListener('change',function(ev){ var t=ev.target; if(!t.matches||!t.matches('#t-pay input[data-i]')) return; var p=PAY[+t.getAttribute('data-i')], k=t.getAttribute('data-k'); if(!p) return; if(k==='note'){ p.note=t.value; p.noteEdit=true; } else { p[k]=t.value===''?null:parseFloat(t.value); if(k==='u'){ p.uOld=false; p.uEdit=true; } } if(k!=='note') drawPay(); });
