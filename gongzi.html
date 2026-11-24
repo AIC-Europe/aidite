@@ -47,11 +47,14 @@ ul{margin:6px 0 0 18px;padding:0;color:var(--muted);font-size:13.5px}
     <div class="bar">
       <label>工资月份 <input type="month" id="mon"></label>
       <label>事务所发来的文件（工资单 PDF 和“其他文件”PDF 一起选，也可以选压缩包）<input type="file" id="f-pay" accept=".pdf,.zip,application/pdf,application/zip" multiple></label>
+      <label>PDF 密码（文件加密时才需要填）<input type="password" id="pw" autocomplete="off" placeholder="事务所约定的密码"></label>
       <label>Deel 账单（PDF）<input type="file" id="f-deel" accept=".pdf,application/pdf"></label>
     </div>
+    <div class="bar"><span class="who" id="files-sub">还没有选择文件。</span><button type="button" id="clear" disabled>清空重选</button></div>
     <div class="msg" id="msg" role="status"></div>
     <ul>
-      <li>文件只在这台电脑的浏览器里读取，不会上传到任何地方。</li>
+      <li>文件只在这台电脑的浏览器里读取，不会上传到任何地方。密码也只在本页使用，不保存。</li>
+      <li>事务所发来的压缩包可以直接选，不用先解压、也不用另存。文件可以分几次选，后选的会加到已选的里面；选错了点“清空重选”。</li>
       <li>实发、公司社保、企业年金取自工资单；工资税和雇主互助保险金取自“其他文件”里的工资日记账（Lohnjournal），所以两个 PDF 要一起选。</li>
       <li>工资税 = 工资税 + 教会税 + 团结附加税，另加雇主承担的包税；雇主互助保险金 = U1 + U2 + 破产保险分摊金；员工缴纳社保 = 现金毛工资 − 实发 − 工资税（不含包税）− 员工企业年金。</li>
       <li>员工顺序可以用“上移”“下移”调整，工具会记住。标黄的行是工具没把握的地方，请人工核对后再发给客户。</li>
@@ -74,7 +77,7 @@ ul{margin:6px 0 0 18px;padding:0;color:var(--muted);font-size:13.5px}
 (function(){
 "use strict";
 var $=function(id){ return document.getElementById(id); };
-var PAY=[], DEEL=null, JRN=null, SRC=[], UKEY='aidite_gz_u', OKEY='aidite_gz_order';
+var PAY=[], DEEL=null, JRN=null, SRC=[], RAW=[], UKEY='aidite_gz_u', OKEY='aidite_gz_order';
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function eur(n){ return (n==null||isNaN(n))?'':Number(n).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function r2(n){ return Math.round(n*100)/100; }
@@ -85,7 +88,7 @@ function cents(s){ var d=String(s).replace(/\D/g,''); return d?parseInt(d,10)/10
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc=window.__PDF_WORKER||'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 /* ----- read a PDF into rows of text items (top to bottom, left to right) ----- */
-function rowsOf(buf){ return pdfjsLib.getDocument({data:buf}).promise.then(function(doc){ var ps=[]; for(var i=1;i<=doc.numPages;i++) ps.push(i);
+function rowsOf(buf,pw){ var o={data:buf}; if(pw) o.password=pw; return pdfjsLib.getDocument(o).promise.then(function(doc){ var ps=[]; for(var i=1;i<=doc.numPages;i++) ps.push(i);
   return ps.reduce(function(acc,i){ return acc.then(function(all){ return doc.getPage(i).then(function(pg){ return pg.getTextContent(); }).then(function(tc){ var rows=[];
     tc.items.forEach(function(it){ var s=(it.str||'').trim(); if(!s) return; var rot=Math.abs(it.transform[1])>Math.abs(it.transform[0]), x=rot?it.transform[5]:it.transform[4], k=rot?it.transform[4]:-it.transform[5], r=null; for(var q=0;q<rows.length;q++){ if(rows[q].rot===rot&&Math.abs(rows[q].k-k)<2.6){ r=rows[q]; break; } } if(!r){ r={k:k,rot:rot,items:[],page:i}; rows.push(r); } r.items.push({s:s,x:x,w:it.width||0}); });
     rows.sort(function(a,b){ return (a.rot?1:0)-(b.rot?1:0)||a.k-b.k; }); rows.forEach(function(r){ r.items.sort(function(a,b){ return a.x-b.x; }); r.text=r.items.map(function(q){return q.s;}).join(' '); });
@@ -168,7 +171,7 @@ function parseDeel(rows){ if(!rows.some(function(r){ return /Deel/.test(r.text);
 
 /* ----- screen ----- */
 function ustore(){ try{ return JSON.parse(localStorage.getItem(UKEY)||'{}'); }catch(e){ return {}; } }
-function drawPay(){ var tb=$('t-pay').querySelector('tbody'), u=ustore(); if(!PAY.length){ return; }
+function drawPay(){ var tb=$('t-pay').querySelector('tbody'), u=ustore(); if(!PAY.length){ tb.innerHTML='<tr><td colspan="12" class="who">选择文件后在这里显示。</td></tr>'; $('pay-sub').textContent='还没有读取工资单'; ready(); return; }
   var tot={cash:0,net:0,tax:0,sv:0,bavAN:0,u:0,svag:0,bavAG:0};
   tb.innerHTML=PAY.map(function(p,i){ if(p.u==null&&u[p.name]!=null){ p.u=u[p.name]; p.uOld=true; } ['cash','net','tax','sv','bavAN','svag','bavAG'].forEach(function(k){ tot[k]+=p[k]||0; }); tot.u+=+p.u||0;
     return '<tr class="'+(p.flags.length||p.uOld||p.u==null?'flag':'')+'"><td>'+(i+1)+'</td><td><b>'+esc(p.name)+'</b>'+(p.kasse?' <span class="who">（'+esc(p.kasse)+'）</span>':'')+(p.flags.length?'<br><span class="chip bad">'+esc(p.flags.join('；'))+'</span>':'')+'</td><td class="n">'+eur(p.cash)+'</td><td class="n">'+eur(p.net)+'</td><td class="n"><input type="number" step="0.01" data-i="'+i+'" data-k="tax" value="'+(p.tax==null?'':p.tax)+'" aria-label="'+esc(p.name)+' 工资税"></td><td class="n"><input type="number" step="0.01" data-i="'+i+'" data-k="sv" value="'+(p.sv==null?'':p.sv)+'" aria-label="'+esc(p.name)+' 员工缴纳社保"></td><td class="n">'+(p.bavAN?eur(p.bavAN):'')+'</td><td class="n"><input type="number" step="0.01" min="0" data-i="'+i+'" data-k="u" value="'+(p.u==null?'':p.u)+'" aria-label="'+esc(p.name)+' 雇主互助保险金">'+(p.uOld?'<br><span class="who">上月的数</span>':'')+'</td><td class="n">'+eur(p.svag)+'</td><td class="n">'+(p.bavAG?eur(p.bavAG):'')+'</td><td><input type="text" data-i="'+i+'" data-k="note" value="'+esc(p.note||'')+'" aria-label="'+esc(p.name)+' 备注"></td><td style="white-space:nowrap"><button type="button" class="mv" data-mv="-1" data-i="'+i+'"'+(i===0?' disabled':'')+' aria-label="'+esc(p.name)+' 上移">上移</button> <button type="button" class="mv" data-mv="1" data-i="'+i+'"'+(i===PAY.length-1?' disabled':'')+' aria-label="'+esc(p.name)+' 下移">下移</button></td></tr>'; }).join('')+
@@ -188,17 +191,31 @@ function readFiles(list){ var jobs=[]; Array.prototype.forEach.call(list,functio
 function orderSaved(){ try{ return JSON.parse(localStorage.getItem(OKEY)||'[]'); }catch(e){ return []; } }
 function sortPay(){ var sv=orderSaved(), ks=[]; PAY.forEach(function(p){ if(ks.indexOf(p.kasse)<0) ks.push(p.kasse); });
   PAY.sort(function(a,b){ var x=sv.indexOf(a.name), y=sv.indexOf(b.name); if(x>=0&&y>=0) return x-y; if(x>=0) return -1; if(y>=0) return 1; return ks.indexOf(a.kasse)-ks.indexOf(b.kasse)||String(a.pn||'').localeCompare(String(b.pn||''))||a.ord-b.ord; }); }
-$('f-pay').addEventListener('change',function(){ var fl=this.files; if(!fl||!fl.length) return; if(!window.pdfjsLib){ return msg('bad','读取 PDF 的组件没有加载成功，请检查网络后刷新页面。'); } msg('info','正在读取…');
-  readFiles(fl).then(function(files){ return files.reduce(function(acc,f,fi){ return acc.then(function(all){ var keep=f.buf.slice(0); return rowsOf(f.buf).then(function(rows){ var src={name:f.name,buf:keep,pages:[]}; all.src.push(src);
-        byPage(rows).forEach(function(pg){ var txt=pg.rows.map(function(r){ return r.text; }).join('\n'), info={page:pg.page,kind:'other',text:txt};
-          if(/Brutto\/Netto-Bez/.test(txt)){ var p=parsePayslip(pg.rows,f.name); if(p){ p.src={f:all.src.length-1,page:pg.page}; if(all.src.length>1||byPage(rows).length>1) p.ord=999; all.ok.push(p); info.kind='pay'; } }
-          else if(/Lohnjournal/.test(txt)){ var j=parseJournal(pg.rows); if(j){ Object.keys(j).forEach(function(k){ all.jrn[k]=j[k]; }); all.hasJ=true; info.kind='journal'; } }
-          src.pages.push(info); }); return all; },function(){ all.skip.push(f.name); return all; }); }); },Promise.resolve({ok:[],skip:[],src:[],jrn:{},hasJ:false})); })
+function isLocked(e){ return !!e&&(e.name==='PasswordException'||/password/i.test(e.message||'')); }
+function loadAll(){ if(!RAW.length){ PAY=[]; SRC=[]; JRN=null; drawPay(); $('files-sub').textContent='还没有选择文件。'; $('clear').disabled=true; return; }
+  var pw=$('pw').value||''; msg('info','正在读取…'); $('clear').disabled=false;
+  RAW.reduce(function(acc,f){ return acc.then(function(all){ return rowsOf(f.buf.slice(0),'').then(null,function(e){ if(isLocked(e)){ f.enc=true; if(pw) return rowsOf(f.buf.slice(0),pw); } throw e; }).then(function(rows){ var src={name:f.name,buf:f.buf,pages:[],locked:f.enc}; all.src.push(src); var pgs=byPage(rows);
+        pgs.forEach(function(pg){ var txt=pg.rows.map(function(r){ return r.text; }).join('\n'), info={page:pg.page,kind:'other',text:txt};
+          if(/Brutto\/Netto-Bez/.test(txt)){ var p=parsePayslip(pg.rows,f.name); if(p){ p.src={f:all.src.length-1,page:pg.page}; if(all.src.length>1||pgs.length>1) p.ord=999; all.ok.push(p); info.kind='pay'; } }
+          else if(/Lohnjournal/.test(txt)){ var j=parseJournal(pg.rows); if(j){ Object.keys(j).forEach(function(k){ all.jrn[k]=j[k]; }); all.hasJ=true; info.kind='journal'; } else all.badJ=true; }
+          src.pages.push(info); }); return all; },function(e){ if(isLocked(e)){ f.enc=true; all.lock.push(f.name); } else all.skip.push(f.name); return all; }); }); },Promise.resolve({ok:[],skip:[],lock:[],src:[],jrn:{},hasJ:false,badJ:false}))
   .then(function(r){ PAY=r.ok; SRC=r.src; JRN=r.hasJ?r.jrn:null; sortPay(); applyJournal(); drawPay();
-    msg(r.ok.length?(JRN?'ok':'info'):'bad',r.ok.length?'读取了 '+r.ok.length+' 张工资单'+(JRN?'和工资日记账。':'，但没有读到工资日记账（Lohnjournal）。请把事务所发来的“其他文件”PDF 也一起选上，否则工资税和雇主互助保险金可能不准。'):'没有读到工资单。请确认选的是事务所发来的工资单 PDF。'); })
+    $('files-sub').textContent='已选 '+RAW.length+' 个文件：'+RAW.map(function(f){ return f.name; }).join('、');
+    var t, cls;
+    if(r.lock.length){ cls='bad'; t=(pw?'密码不对，':'')+'有 '+r.lock.length+' 个文件加了密码（'+r.lock.join('、')+'）。请在上面“PDF 密码”里填'+(pw?'正确的':'')+'密码，填好后会自动重新读取，不用重新选文件。'; if(r.ok.length) t='已读取 '+r.ok.length+' 张工资单。'+t; }
+    else if(!r.ok.length){ cls='bad'; t=(r.hasJ?'读到了工资日记账，但还':'')+'没有读到工资单。请把事务所发来的工资单 PDF（Salaries）也选上。'; }
+    else if(JRN){ cls='ok'; t='读取了 '+r.ok.length+' 张工资单和工资日记账。'; }
+    else { cls='info'; t='读取了 '+r.ok.length+' 张工资单，但没有读到工资日记账（Lohnjournal）。'+(r.badJ?'“其他文件”里有日记账，但格式没认出来，请把这个文件发给艾玛。':'请把事务所发来的“其他文件”PDF（Other documents）也选上。')+'工资税和雇主互助保险金在此之前可以先手工填。'; }
+    if(r.skip.length) t+=' 另有 '+r.skip.length+' 个文件读不了（'+r.skip.join('、')+'），可能是扫描件或图片。';
+    msg(cls,t); })
+  .catch(function(e){ msg('bad','读取失败：'+(e&&e.message||e)); }); }
+$('f-pay').addEventListener('change',function(){ var fl=this.files, inp=this; if(!fl||!fl.length) return; if(!window.pdfjsLib){ return msg('bad','读取 PDF 的组件没有加载成功，请检查网络后刷新页面。'); } msg('info','正在读取…');
+  readFiles(fl).then(function(files){ files.forEach(function(f){ var n=f.buf.byteLength, old=-1; RAW.forEach(function(x,i){ if(x.name===f.name) old=i; }); if(old>=0) RAW[old]=f; else RAW.push(f); }); try{ inp.value=''; }catch(e){} loadAll(); })
   .catch(function(e){ msg('bad','读取失败：'+(e&&e.message||e)); }); });
+$('pw').addEventListener('change',function(){ if(RAW.length) loadAll(); });
+$('clear').addEventListener('click',function(){ RAW=[]; loadAll(); msg('info','已清空，请重新选择文件。'); });
 $('f-deel').addEventListener('change',function(){ var f=this.files&&this.files[0]; if(!f) return; if(!window.pdfjsLib){ return msg('bad','读取 PDF 的组件没有加载成功，请检查网络后刷新页面。'); } msg('info','正在读取 Deel 账单…');
-  f.arrayBuffer().then(rowsOf).then(function(rows){ var d=parseDeel(rows); if(!d||!d.blocks.length){ msg('bad','这个文件不像 Deel 的账单，没有读到发票。'); return; } DEEL=d; drawDeel(); msg('ok','读取了 Deel 账单，共 '+d.blocks.length+' 张发票。'); }).catch(function(e){ msg('bad','读取失败：'+(e&&e.message||e)); }); });
+  f.arrayBuffer().then(function(b){ return rowsOf(b,$('pw').value||''); }).then(function(rows){ var d=parseDeel(rows); if(!d||!d.blocks.length){ msg('bad','这个文件不像 Deel 的账单，没有读到发票。'); return; } DEEL=d; drawDeel(); msg('ok','读取了 Deel 账单，共 '+d.blocks.length+' 张发票。'); }).catch(function(e){ msg('bad','读取失败：'+(e&&e.message||e)); }); });
 document.addEventListener('change',function(ev){ var t=ev.target; if(!t.matches||!t.matches('#t-pay input[data-i]')) return; var p=PAY[+t.getAttribute('data-i')], k=t.getAttribute('data-k'); if(!p) return; if(k==='note'){ p.note=t.value; p.noteEdit=true; } else { p[k]=t.value===''?null:parseFloat(t.value); if(k==='u'){ p.uOld=false; p.uEdit=true; } } if(k!=='note') drawPay(); });
 document.addEventListener('click',function(ev){ var b=ev.target.closest&&ev.target.closest('button.mv'); if(!b) return; var i=+b.getAttribute('data-i'), j=i+(+b.getAttribute('data-mv')); if(j<0||j>=PAY.length) return; var x=PAY[i]; PAY[i]=PAY[j]; PAY[j]=x; try{ localStorage.setItem(OKEY,JSON.stringify(PAY.map(function(p){ return p.name; }))); }catch(e){} drawPay(); });
 
@@ -210,32 +227,35 @@ function sheetPay(wb,mon){ var ws=wb.addWorksheet('当地员工'), n=PAY.length,
   ws.getRow(1).values=['月份','序号','员工','员工工资',null,null,null,null,'公司承担部分',null,null,null,'公司总成本','备注'];
   ws.getRow(2).values=[null,null,null,'实发工资','工资税','员工缴纳社保','企业年金\n（员工薪资转换）','合计','雇主互助保险金','公司缴纳社保','企业年金','合计'];
   ['A1:A2','B1:B2','C1:C2','D1:H1','I1:L1','M1:M2','N1:N2'].forEach(function(m){ ws.mergeCells(m); });
-  PAY.forEach(function(p,i){ var r=first+i, row=ws.getRow(r); row.getCell(2).value=i+1; row.getCell(3).value=p.name+(p.kasse?' ('+p.kasse+')':''); row.getCell(4).value=p.net||0; row.getCell(5).value=p.tax||0; row.getCell(6).value=p.sv||0; if(p.bavAN) row.getCell(7).value=p.bavAN; row.getCell(8).value={formula:'SUM(D'+r+':G'+r+')'}; if(p.u!=null&&p.u!=='') row.getCell(9).value=+p.u; row.getCell(10).value=p.svag||0; if(p.bavAG) row.getCell(11).value=p.bavAG; row.getCell(12).value={formula:'SUM(I'+r+':K'+r+')'}; row.getCell(13).value={formula:'H'+r+'+L'+r}; row.getCell(14).value=p.note||''; });
+  var T={}; for(var tc=4;tc<=13;tc++) T[tc]=0;
+  PAY.forEach(function(p,i){ var r=first+i, row=ws.getRow(r); row.getCell(2).value=i+1; row.getCell(3).value=p.name+(p.kasse?' ('+p.kasse+')':''); row.getCell(4).value=p.net||0; row.getCell(5).value=p.tax||0; row.getCell(6).value=p.sv||0; if(p.bavAN) row.getCell(7).value=p.bavAN; var h8=r2((p.net||0)+(p.tax||0)+(p.sv||0)+(p.bavAN||0)), l12=r2((+p.u||0)+(p.svag||0)+(p.bavAG||0)); T[4]+=p.net||0; T[5]+=p.tax||0; T[6]+=p.sv||0; T[7]+=p.bavAN||0; T[8]+=h8; T[9]+=+p.u||0; T[10]+=p.svag||0; T[11]+=p.bavAG||0; T[12]+=l12; T[13]+=h8+l12; row.getCell(8).value={formula:'SUM(D'+r+':G'+r+')',result:h8}; if(p.u!=null&&p.u!=='') row.getCell(9).value=+p.u; row.getCell(10).value=p.svag||0; if(p.bavAG) row.getCell(11).value=p.bavAG; row.getCell(12).value={formula:'SUM(I'+r+':K'+r+')',result:l12}; row.getCell(13).value={formula:'H'+r+'+L'+r,result:r2(h8+l12)}; row.getCell(14).value=p.note||''; });
   ws.getCell(first,1).value=mon.replace('-','.'); if(n>1) ws.mergeCells(first,1,last,1);
-  ws.getCell(tot,3).value='总计'; for(var c=4;c<=13;c++) ws.getCell(tot,c).value={formula:'SUM('+L(c)+first+':'+L(c)+last+')'};
+  ws.getCell(tot,3).value='总计'; for(var c=4;c<=13;c++) ws.getCell(tot,c).value={formula:'SUM('+L(c)+first+':'+L(c)+last+')',result:r2(T[c])};
   styleAll(ws,1,2,1,14,true); styleAll(ws,first,last,1,14,false); styleAll(ws,tot,tot,1,14,true);
   for(var r=first;r<=tot;r++){ for(c=4;c<=13;c++) ws.getCell(r,c).numFmt=EURF; ws.getCell(r,14).alignment={horizontal:'left',vertical:'middle',wrapText:true}; if(PAY[r-first]&&(PAY[r-first].u==null||PAY[r-first].u===''||PAY[r-first].uOld)) ws.getCell(r,9).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFF00'}}; if(PAY[r-first]&&PAY[r-first].flags.length){ ws.getCell(r,5).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFF00'}}; ws.getCell(r,6).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFF00'}}; } }
   var r0=tot+1; ws.getCell(r0,3).value='备注：雇主互助保险金 = 疾病费用分摊金U1 + 生育费用分摊金U2 + 破产金分摊，是强制性社会保障性雇主缴款，用来分摊员工生病、生育导致无法工作的工资风险'; ws.mergeCells(r0,3,r0,13); ws.getCell(r0,3).font={name:'Calibri',size:9}; ws.getCell(r0,3).alignment={horizontal:'center'};
-  var rr=r0+1, put=function(label,f){ ws.getCell(rr,3).value=label; ws.getCell(rr,4).value={formula:f}; styleAll(ws,rr,rr,3,4,false); ws.getCell(rr,4).numFmt=EURF; rr++; return rr-1; };
-  put('实发工资总计','D'+tot);
+  var PUTV={}, rr=r0+1, put=function(label,f,v){ ws.getCell(rr,3).value=label; ws.getCell(rr,4).value={formula:f,result:r2(v||0)}; PUTV[rr]=r2(v||0); styleAll(ws,rr,rr,3,4,false); ws.getCell(rr,4).numFmt=EURF; rr++; return rr-1; };
+  put('实发工资总计','D'+tot,T[4]);
   var groups={}, order=[]; PAY.forEach(function(p,i){ var k=p.kasse||'未识别医保公司'; if(!groups[k]){ groups[k]=[]; order.push(k); } groups[k].push(first+i); });
-  var k1=rr; order.forEach(function(k){ put(k,groups[k].map(function(r){ return 'F'+r+'+I'+r+'+J'+r; }).join('+')); });
-  put('社保总计','SUM(D'+k1+':D'+(rr-1)+')'); put('工资税总计','E'+tot); put('企业年金总计','G'+tot+'+K'+tot);
+  var k1=rr; var svAll=0; order.forEach(function(k){ var v=groups[k].reduce(function(s,r){ var p=PAY[r-first]; return s+(p.sv||0)+(+p.u||0)+(p.svag||0); },0); svAll+=v; put(k,groups[k].map(function(r){ return 'F'+r+'+I'+r+'+J'+r; }).join('+'),v); });
+  put('社保总计','SUM(D'+k1+':D'+(rr-1)+')',svAll); put('工资税总计','E'+tot,T[5]); put('企业年金总计','G'+tot+'+K'+tot,T[7]+T[11]);
   ws.views=[{state:'frozen',xSplit:3,ySplit:2}]; }
 function sheetDeel(wb,mon){ var ws=wb.addWorksheet('外包员工'); [8.6,18,26,18,22,59,15].forEach(function(w,i){ ws.getColumn(i+1).width=w; });
   ws.getRow(1).values=['月份','Employee 员工','Invoice No. 发票号','Total 金额','费用类别','说明','金额']; var r=2, start=2;
   DEEL.blocks.forEach(function(b){ var a=r; b.rows.forEach(function(x,i){ var row=ws.getRow(r); if(i===0){ row.getCell(2).value=b.name; row.getCell(3).value=b.inv; row.getCell(4).value=(b.fee||b.proc)?(b.sub!=null?b.sub:b.sum):{formula:'SUM(G'+a+':G'+(a+b.rows.length-1)+')'}; } row.getCell(5).value=x.cat; row.getCell(6).value=x.desc; row.getCell(7).value=x.num==null?x.amt:x.num; if(x.flag) row.getCell(6).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFF00'}}; r++; });
     if(b.rows.length>1){ ['B','C','D'].forEach(function(c){ ws.mergeCells(c+a+':'+c+(r-1)); }); } });
   if(DEEL.fees!=null){ ws.getCell(r,4).value=DEEL.fees; ws.getCell(r,5).value='银行转账手续费'; r++; }
-  ws.getCell(r,2).value='总计'; ws.getCell(r,4).value={formula:'SUM(D'+start+':D'+(r-1)+')'};
+  var dsum=0; for(var di=start;di<r;di++){ var dv=ws.getCell(di,4).value; if(typeof dv==='number') dsum+=dv; } ws.getCell(r,2).value='总计'; ws.getCell(r,4).value={formula:'SUM(D'+start+':D'+(r-1)+')',result:r2(dsum)};
   ws.getCell(start,1).value=mon.replace('-','.'); if(r-1>start) ws.mergeCells(start,1,r-1,1);
   styleAll(ws,1,1,1,7,true); styleAll(ws,start,r,1,7,false); for(var i=start;i<=r;i++){ ws.getCell(i,4).numFmt=EURF; if(typeof ws.getCell(i,7).value==='number') ws.getCell(i,7).numFmt='#,##0.00'; ws.getCell(i,6).alignment={horizontal:'left',vertical:'middle',wrapText:true}; }
   ws.getCell(r,2).font={name:'Calibri',size:11,bold:true}; ws.getCell(r,4).font={name:'Calibri',size:11,bold:true}; }
 $('go').addEventListener('click',function(){ if(!window.ExcelJS) return msg('bad','生成 Excel 的组件没有加载成功，请检查网络后刷新页面。'); var mon=$('mon').value||'', wb=new ExcelJS.Workbook(); wb.creator='工资表生成工具';
   if(PAY.length){ sheetPay(wb,mon); var u=ustore(); PAY.forEach(function(p){ if(p.u!=null&&p.u!=='') u[p.name]=+p.u; }); try{ localStorage.setItem(UKEY,JSON.stringify(u)); localStorage.setItem(OKEY,JSON.stringify(PAY.map(function(p){ return p.name; }))); }catch(e){} }
   if(DEEL) sheetDeel(wb,mon);
-  wb.xlsx.writeBuffer().then(function(buf){ var a=document.createElement('a'), mm=mon?parseInt(mon.slice(5),10)+'月':''; a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})); a.download='Aidite_'+(mon?mon.slice(0,4)+'年':'')+mm+'工资明细.xlsx'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },5000); msg('ok','已生成 Excel。请打开文件核对标黄的单元格。'); },function(e){ msg('bad','生成失败：'+(e&&e.message||e)); }); });
-$('split').addEventListener('click',function(){ if(!window.PDFLib||!window.JSZip) return msg('bad','拆分 PDF 的组件没有加载成功，请检查网络后刷新页面。'); var mon=$('mon').value||'', tag=mon?mon.slice(5)+'-'+mon.slice(0,4):'', folder='Salaries '+tag, zip=new JSZip(), b=this; b.disabled=true; msg('info','正在拆分工资单…');
+  if(!wb.worksheets.length) return msg('bad','还没有读到工资单或 Deel 账单，所以没有内容可以生成。请先选择文件，看到上面的表格里有数据后再点生成。');
+  wb.calcProperties.fullCalcOnLoad=true;
+  wb.xlsx.writeBuffer().then(function(buf){ var a=document.createElement('a'), mm=mon?parseInt(mon.slice(5),10)+'月':''; a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})); a.download='Aidite_'+(mon?mon.slice(0,4)+'年':'')+mm+'工资明细.xlsx'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },5000); msg('ok','已生成 Excel：'+(PAY.length?'当地员工 '+PAY.length+' 人':'')+(PAY.length&&DEEL?'，':'')+(DEEL?'外包发票 '+DEEL.blocks.length+' 张':'')+'。请打开文件核对标黄的单元格。'); },function(e){ msg('bad','生成失败：'+(e&&e.message||e)); }); });
+$('split').addEventListener('click',function(){ if(!window.PDFLib||!window.JSZip) return msg('bad','拆分 PDF 的组件没有加载成功，请检查网络后刷新页面。'); var mon=$('mon').value||'', tag=mon?mon.slice(5)+'-'+mon.slice(0,4):'', folder='Salaries '+tag, zip=new JSZip(), b=this; if(SRC.some(function(s){ return s.locked&&s.pages.some(function(pg){ return pg.kind==='pay'; }); })) return msg('bad','加了密码的工资单 PDF 不能直接拆分。请先用浏览器打开这个 PDF、输入密码后“打印 → 另存为 PDF”，得到不带密码的文件，再用它来拆分。生成 Excel 不受影响。'); b.disabled=true; msg('info','正在拆分工资单…');
   var used={}; PAY.forEach(function(p){ used[p.src.f+'|'+p.src.page]=1; });
   var extra=PAY.map(function(){ return []; }), loose=[];
   SRC.forEach(function(src,fi){ if(!src.pages.some(function(pg){ return pg.kind==='pay'; })) return; src.pages.forEach(function(pg){ if(pg.kind!=='other'||used[fi+'|'+pg.page]) return; var hit=-1, low=pg.text.toLowerCase(); PAY.forEach(function(p,i){ var parts=p.name.toLowerCase().split(/\s+/), last=parts[parts.length-1]; if(hit<0&&last.length>2&&low.indexOf(last)>=0&&low.indexOf(parts[0])>=0) hit=i; }); if(hit>=0) extra[hit].push({f:fi,page:pg.page}); else if(pg.text.trim()) loose.push({f:fi,page:pg.page}); }); });
